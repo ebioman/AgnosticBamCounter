@@ -1,0 +1,15 @@
+[package]
+name    = "abc"
+version = "0.1.0"
+authors = ["Emanuel Schmid-Siegert"]
+edition = "2018"
+description   =  "The Agnostic Bam Counter (abc) determines at a given positions the count of observed nucleotides. \nSimply supply a bed file with positions and obtains a tsv file with counts for each ATCG and reference if provided"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rust-htslib = "*"
+#regex = "1"
+clap = "*"
+#csv = "1.1.6"
+#chrono = "*"
+bio = "*"
