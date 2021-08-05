@@ -35,6 +35,19 @@ struct Pileup {
 	depth: u32,
 }
 
+// takes the generates pileups in our specific
+// format and prints them according to our wishes
+// currently only tsv, might add more possibilities
+// in the future
+fn print_pileup(result:Vec<Pileup>){
+	if result.len() == 0 {
+		eprintln!("INFO: no pileup information aquired - good bye")
+	}
+	for element in result {
+		println!{"{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", element.chromosome,element.position,element.reference,element.nuc_a,element.nuc_t,element.nuc_c,element.nuc_g,element.ambigious,element.depth}
+	}
+}
+
 
 // this simply takes a BED file and organizes entries in a Hashmap
 // where they are organized by chromosome which should speedup
@@ -85,21 +98,16 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>) ->
 // allows to potentially already parallelize over each position analyzed
 fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64) -> Pileup {
 	// NOTE:
-	// Currently the biggest issue is the fact that we might have spliced alignment 
-	// and the alignment length is often much longer than the sequence length --> need
-	// to work on cigar to get positions ???
-	let start = *pos;
-	let end   = pos + 1;
+	// SAM is 1 based and not 0 based, need to correct for that in
+	let start = *pos -1 ;
+	let end   = *pos ;
 	// this obtains now the pileup at that
 	// given position
-	match bam.fetch((chr,start,end)) {
-		Ok(_)  => eprintln!("Obtained region {} {} {}", &chr,&start,&end),
-		Err(_) => panic!("Could not fetch region {} {} {}", &chr,&start,&end)
-	};
+	bam.fetch((chr,start,end)).expect("ERROR: could not fetch region");
 	// currently we ignore completely clipping
 	let mut collection : Pileup = Default::default();
 	collection.chromosome = chr.to_string();
-	collection.position   = start;
+	collection.position   = *pos;
 	for pile in bam.pileup().map(|x| x.expect("ERROR: could not parse BAM file")){
 		// now we only care about the position we inquire
 		if pile.pos() as u64 == start {
@@ -108,6 +116,7 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64) -> Pileup {
 				// sometimes we get reads with 0 length, no idea why
 				if alignment.record().seq_len() == 0 { continue }
 				// some have none, no idea why
+				
 				let qpos = match  alignment.qpos(){
 					Some(q) => q,
 					_ =>  continue,
@@ -121,8 +130,6 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64) -> Pileup {
 					"G" => collection.nuc_g = collection.nuc_g +1  ,
 					_ => collection.ambigious = collection.ambigious +1  ,
 				}
-				//println!("Checking pile at from contig {} position {} with depth {} qpos {} and base {:?}",
-				//	pile.tid(),pile.pos(),pile.depth(), qpos, nuc1);
 			}
 		}
 	};
@@ -171,5 +178,5 @@ fn main() {
 	
 	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(&bed_file);
 	let analysis_result = analyze_bam_positions(&bam_input,&positions);
-	dbg!(analysis_result);
+	print_pileup(analysis_result);
 }
