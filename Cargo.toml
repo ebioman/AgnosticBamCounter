@@ -3,13 +3,20 @@ name    = "abc"
 version = "0.1.0"
 authors = ["Emanuel Schmid-Siegert"]
 edition = "2018"
-description   =  "The Agnostic Bam Counter (abc) determines at a given positions the count of observed nucleotides. \nSimply supply a bed file with positions and obtains a tsv file with counts for each ATCG and reference if provided"
+description   =  """
+The Agnostic Bam Counter (abc) determines at a given positions the count of observed nucleotides.
+Simply supply a bed file with positions and obtains a tsv file with counts for each ATCG and reference if provided.
+Note: 
+ - one needs to supply single nucleotide positions and not a range
+ - it will sort both, by chromosome and then position - this might pose problems with funky contig names!
+"""
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rust-htslib = "*"
 #regex = "1"
 clap = "*"
-#csv = "1.1.6"
-#chrono = "*"
+csv = "*"
+chrono = "*"
 bio = "*"
+itertools = "*"

@@ -4,6 +4,18 @@ use std::collections::HashMap;
 use std::path::Path;
 use rust_htslib::{bam, bam::Read};
 use std::str::from_utf8;
+use bio::io::fasta::IndexedReader;
+use chrono::{DateTime, Local};
+use csv;
+use std::error;
+use std::process;
+use std::env;
+use itertools::Itertools;
+
+
+// Change the alias to `Box<error::Error>`.
+type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
+
 
 
 
@@ -39,13 +51,29 @@ struct Pileup {
 // format and prints them according to our wishes
 // currently only tsv, might add more possibilities
 // in the future
-fn print_pileup(result:Vec<Pileup>){
-	if result.len() == 0 {
-		eprintln!("INFO: no pileup information aquired - good bye")
-	}
-	for element in result {
-		println!{"{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", element.chromosome,element.position,element.reference,element.nuc_a,element.nuc_t,element.nuc_c,element.nuc_g,element.ambigious,element.depth}
-	}
+fn print_pileup(result:&Vec<Pileup>,out: &str, version: &str, author: &str , command: &str )-> Result<i32> {
+	let now: DateTime<Local> = Local::now();
+	let mut writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(&out)?;
+	writer.write_record(&["##","abc:",version,"","","","","",""])?;
+    writer.write_record(&["##","author:",author,"","","","","",""])?;
+    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","",""])?;
+    writer.write_record(&["##","command:", command,"","","","","",""])?;    
+    writer.write_record(&["# chromosome","position","reference","A","T","C","G","ambigious","depth"])?;
+    for element in result.iter() {
+        writer.write_record(&[
+			element.chromosome.clone(),
+			element.position.to_string(),
+			element.reference.clone(),
+			element.nuc_a.to_string(),
+			element.nuc_t.to_string(),
+			element.nuc_c.to_string(),
+			element.nuc_g.to_string(),
+			element.ambigious.to_string(),
+			element.depth.to_string()
+			])?;
+    };
+    writer.flush()?;
+    Ok(0)
 }
 
 
@@ -76,7 +104,8 @@ fn parse_bed_file (input: &str) -> HashMap<String,Vec<u64>>{
 
 // This reads now the BAM file and uses the positions
 // to check for each position the observed number of nucleotides
-fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>) -> Vec<Pileup>{
+// It sorts as well again by chromosome and position to be safe
+fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, ref_fasta: &str, threads: &u32) -> Vec<Pileup>{
 	assert!(
 		Path::new(input).exists(),
 		"ERROR: BAM file {} does not exist!",
@@ -84,9 +113,20 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>) ->
 	);
 	let mut overview : Vec<Pileup> = Vec::new();
 	let mut bam_file = bam::IndexedReader::from_path(input).unwrap();
-	for (chr,collection) in positions {
-		for pos in collection {
-			let tmp_result = fetch_position(&mut bam_file,chr,pos);
+	// generate a thread pool for the multithreaded reading and writing of BAM files
+	eprintln!("INFO: Parsing BAM file with {} threads",threads);
+    let pool = rust_htslib::tpool::ThreadPool::new(*threads).unwrap();
+    bam_file.set_thread_pool(&pool).unwrap();
+	// this is really not great, I want to open if available the
+	// index file and provide to the fetch postion but I cant manage
+	// to specify the type in the function definition
+	// therefore I open close very often.....
+	for chr in positions.keys().sorted() {
+		for pos in positions.get(chr).unwrap().iter().sorted(){
+			let tmp_result = match ref_fasta { 
+			"NONE" => fetch_position(&mut bam_file,chr,pos,None),
+			 _     => fetch_position(&mut bam_file,chr,pos,Some(ref_fasta)),
+			};
 			overview.push(tmp_result);
 		}
 	}
@@ -96,7 +136,7 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>) ->
 // this sub-function gets the iterator result from the positions
 // and return the result of pileup analysis at that given position
 // allows to potentially already parallelize over each position analyzed
-fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64) -> Pileup {
+fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: Option<&str>) -> Pileup {
 	// NOTE:
 	// SAM is 1 based and not 0 based, need to correct for that in
 	let start = *pos -1 ;
@@ -106,6 +146,15 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64) -> Pileup {
 	bam.fetch((chr,start,end)).expect("ERROR: could not fetch region");
 	// currently we ignore completely clipping
 	let mut collection : Pileup = Default::default();
+	if ref_file.is_some() {
+		let mut faidx = IndexedReader::from_file(&ref_file.unwrap()).unwrap();
+		faidx.fetch(chr,start,end).expect("ERROR: could not fetch interval on reference ");
+		let mut ref_seq = Vec::new();
+		faidx.read(&mut ref_seq).expect("ERROR: could not read sequence from reference");
+		collection.reference = String::from(from_utf8(&ref_seq).unwrap());
+	}else{
+		collection.reference = String::from("NA");
+	}
 	collection.chromosome = chr.to_string();
 	collection.position   = *pos;
 	for pile in bam.pileup().map(|x| x.expect("ERROR: could not parse BAM file")){
@@ -138,6 +187,11 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64) -> Pileup {
 }
 
 fn main() {
+	// now the next is not really for any argument 
+    // parsing but simply to get the command which 
+    // was used to execute as I cant get this from clap
+    let args: Vec<String> = env::args().collect();
+    let args_string = args.join(" ");
     let matches = app_from_crate!()
 		.arg(Arg::with_name("BAM")
 			.short("b")
@@ -166,17 +220,30 @@ fn main() {
 			.value_name("FASTA")
 			.help("if reference in fasta format provided, reference nucleotide \
                  \nis provided for each positions, otherwise NA")
-			.takes_value(false)
+			.takes_value(true)
             .required(false))
+		.arg(Arg::with_name("THREADS")
+			.short("t")
+			.long("threads")
+			.value_name("INT")
+			.takes_value(true)
+			.required(false))
 		.get_matches();
     
 	// prepare input or quit
-	let bam_input = matches.value_of("BAM").unwrap();
+	let bam_file = matches.value_of("BAM").unwrap();
 	let bed_file  = matches.value_of("POSITIONS").unwrap();
-	let _out_file  = matches.value_of("OUT").unwrap();
-	let _ref_file  = matches.value_of("REF").unwrap_or("NONE");
-	
+	let out_file  = matches.value_of("OUT").unwrap();
+	let ref_file  = matches.value_of("REF").unwrap_or("NONE");
+	let bam_threads   = matches.value_of("THREADS").unwrap_or("1").parse::<u32>().unwrap();
 	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(&bed_file);
-	let analysis_result = analyze_bam_positions(&bam_input,&positions);
-	print_pileup(analysis_result);
+	
+	let analysis_result = analyze_bam_positions(&bam_file,&positions, &ref_file, &bam_threads);
+	// here we box the error, so in case the writing does
+	// not work we get a return of the error from the process back
+	if let Err(err) = print_pileup(&analysis_result,&out_file,crate_version!(),crate_authors!(),&args_string){
+		eprintln!("{}", err);
+        process::exit(1);
+    }
+	
 }
