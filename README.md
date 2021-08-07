@@ -30,9 +30,6 @@ OPTIONS:
 ## Limitations
 
  - the bed-file currently accepts only single nucleotide positions, no ranges.
- - the outfile handle does not work
- - not sorted
- - no threads
  - not tested for indels
- - reference handle not implemented yet
+ - systematic testing missing so far
 
