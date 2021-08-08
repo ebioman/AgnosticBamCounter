@@ -32,3 +32,34 @@ OPTIONS:
  - not tested for indels
  - systematic testing missing so far
 
+## Output
+
+Example:
+
+```
+##      abc:    0.2.0                                           
+##      author: Emanuel Schmid-Siegert                                          
+##      date:   Sun, 08 Aug 2021 08:47:45 +0200                                         
+##      command:        target/debug/abc --bam test/test_mpileup.bam --outfile test/test_mpileup.out.tsv --positions test/test_mpileup.bed --reference test/test_ref.fa                                         
+# chromosome    position        reference       A       T       C       G       ambigious       depth
+17      302     T       1       16      0       0       0       17
+17      303     G       0       0       0       17      0       17
+17      1869    A       11      7       0       0       0       18
+17      1870    C       0       0       18      0       0       18
+17      1884    G       0       0       0       21      0       21
+21      10402985        G       3       0       0       341     0       344
+21      10405200        T       0       29      30      0       0       59
+```
+
+The header contains the version and author of the program as well as the execution time and the used command.
+We have then in the table the following columns:
+
+ - contig/chromosome name
+ - the position 0 based
+ - the reference nucleotide if reference was provided, otherwise "NA"
+ - the count of As
+ - the count of Ts
+ - the count of Cs
+ - the count of Gs
+ - the count of ambigious based, e.g. N or X
+ - the depth at that position
