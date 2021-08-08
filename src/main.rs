@@ -6,7 +6,6 @@ use rust_htslib::{bam, bam::Read};
 use std::str::from_utf8;
 use bio::io::fasta::IndexedReader;
 use chrono::{DateTime, Local};
-use csv;
 use std::error;
 use std::process;
 use std::env;
@@ -51,7 +50,7 @@ struct Pileup {
 // format and prints them according to our wishes
 // currently only tsv, might add more possibilities
 // in the future
-fn print_pileup(result:&Vec<Pileup>,out: &str, version: &str, author: &str , command: &str )-> Result<i32> {
+fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , command: &str )-> Result<i32> {
 	let now: DateTime<Local> = Local::now();
 	let mut writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(&out)?;
 	writer.write_record(&["##","abc:",version,"","","","","",""])?;
@@ -90,7 +89,7 @@ fn parse_bed_file (input: &str) -> HashMap<String,Vec<u64>>{
 	let mut bed = bio::io::bed::Reader::from_file(input).unwrap();
 	for entry in bed.records(){
 		let record = entry.expect("ERROR: wrong BED record");
-		if &record.end()-&record.start()>1 {
+		if record.end()-record.start()>1 {
 			panic!("ERROR: entry {:?} contained not a position but a range!",&record);
 		}
 		bed_result
@@ -146,14 +145,15 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 	bam.fetch((chr,start,end)).expect("ERROR: could not fetch region");
 	// currently we ignore completely clipping
 	let mut collection : Pileup = Default::default();
-	if ref_file.is_some() {
-		let mut faidx = IndexedReader::from_file(&ref_file.unwrap()).unwrap();
-		faidx.fetch(chr,start,end).expect("ERROR: could not fetch interval on reference ");
-		let mut ref_seq = Vec::new();
-		faidx.read(&mut ref_seq).expect("ERROR: could not read sequence from reference");
-		collection.reference = String::from(from_utf8(&ref_seq).unwrap());
-	}else{
-		collection.reference = String::from("NA");
+	match ref_file {
+		Some(x) => {
+				let mut faidx = IndexedReader::from_file(&x).unwrap();
+				faidx.fetch(chr,start,end).expect("ERROR: could not fetch interval on reference ");
+				let mut ref_seq = Vec::new();
+				faidx.read(&mut ref_seq).expect("ERROR: could not read sequence from reference");
+				collection.reference = String::from(from_utf8(&ref_seq).unwrap())
+			}
+		None => collection.reference = String::from("NA")
 	}
 	collection.chromosome = chr.to_string();
 	collection.position   = *pos;
@@ -173,11 +173,11 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 				let nuc  = &alignment.record().seq().as_bytes()[qpos..qpos+1];
 				let nuc1 = from_utf8(nuc).unwrap();
 				match nuc1 {
-					"A" => collection.nuc_a = collection.nuc_a +1  ,
-					"T" => collection.nuc_t = collection.nuc_t +1  ,
-					"C" => collection.nuc_c = collection.nuc_c +1  ,
-					"G" => collection.nuc_g = collection.nuc_g +1  ,
-					_ => collection.ambigious = collection.ambigious +1  ,
+					"A" => collection.nuc_a += 1  ,
+					"T" => collection.nuc_t += 1  ,
+					"C" => collection.nuc_c += 1  ,
+					"G" => collection.nuc_g += 1  ,
+					_ => collection.ambigious += 1  ,
 				}
 			}
 		}
