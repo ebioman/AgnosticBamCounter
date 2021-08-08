@@ -10,6 +10,7 @@ use std::error;
 use std::process;
 use std::env;
 use itertools::Itertools;
+extern crate bambam;
 
 
 // Change the alias to `Box<error::Error>`.
@@ -228,13 +229,23 @@ fn main() {
 			.value_name("INT")
 			.takes_value(true)
 			.required(false))
+		.arg(Arg::with_name("BAMBAM")
+			.short("x")
+			.long("bambam")
+			.value_name("IDH")
+			.takes_value(false)
+			.required(false)
+			.hidden(true))	
 		.get_matches();
     
 	// prepare input or quit
-	let bam_file = matches.value_of("BAM").unwrap();
+	let bam_file  = matches.value_of("BAM").unwrap();
 	let bed_file  = matches.value_of("POSITIONS").unwrap();
 	let out_file  = matches.value_of("OUT").unwrap();
 	let ref_file  = matches.value_of("REF").unwrap_or("NONE");
+	if matches.is_present("BAMBAM") {
+		bambam::bam_bam_inda_house();
+	}
 	let bam_threads   = matches.value_of("THREADS").unwrap_or("1").parse::<u32>().unwrap();
 	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(&bed_file);
 	

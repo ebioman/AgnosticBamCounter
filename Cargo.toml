@@ -20,3 +20,4 @@ csv = "*"
 chrono = "*"
 bio = "*"
 itertools = "*"
+bambam = {git = "https://github.com/ebioman/bambam"}
