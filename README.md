@@ -6,7 +6,6 @@
 The goal was to have an agnostic examination of positions as I found e.g. PacBio HIFI read analysis
 of `bamtools mpileup` to be sometimes questionable.
 
-abc 0.1.0    
 Emanuel Schmid-Siegert    
 The Agnostic Bam Counter (abc) determines at a given positions the count of observed nucleotides. 
 Simply supply a bed file with positions and obtains a tsv file with counts for each ATCG and reference if provided
