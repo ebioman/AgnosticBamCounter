@@ -43,6 +43,10 @@ struct Pileup {
     /// number of observe ambigious
 	/// elements, e.g. N or X
     ambigious: i32,
+	/// number of reads with insertion
+	ins: i32,
+	/// number of reads with deletion
+	del: i32,
 	/// depth at that given position
 	depth: u32,
 }
@@ -54,11 +58,11 @@ struct Pileup {
 fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , command: &str )-> Result<i32> {
 	let now: DateTime<Local> = Local::now();
 	let mut writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(&out)?;
-	writer.write_record(&["##","abc:",version,"","","","","",""])?;
-    writer.write_record(&["##","author:",author,"","","","","",""])?;
-    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","",""])?;
-    writer.write_record(&["##","command:", command,"","","","","",""])?;    
-    writer.write_record(&["# chromosome","position","reference","A","T","C","G","ambigious","depth"])?;
+	writer.write_record(&["##","abc:",version,"","","","","","","",""])?;
+    writer.write_record(&["##","author:",author,"","","","","","","",""])?;
+    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","","","",""])?;
+    writer.write_record(&["##","command:", command,"","","","","","","",""])?;    
+    writer.write_record(&["# chromosome","position","reference","A","T","C","G","ambigious","ins","del","depth"])?;
     for element in result.iter() {
         writer.write_record(&[
 			element.chromosome.clone(),
@@ -69,6 +73,8 @@ fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , comman
 			element.nuc_c.to_string(),
 			element.nuc_g.to_string(),
 			element.ambigious.to_string(),
+			element.ins.to_string(),
+			element.del.to_string(),
 			element.depth.to_string()
 			])?;
     };
@@ -163,10 +169,14 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 		if pile.pos() as u64 == start {
 			collection.depth = pile.depth();
 			for alignment in pile.alignments(){
+				// some have none, no idea why
+				match alignment.indel() {
+					bam::pileup::Indel::Ins(_len) => collection.ins += 1,
+    				bam::pileup::Indel::Del(_len) => collection.del += 1,
+    				bam::pileup::Indel::None => ()
+				}
 				// sometimes we get reads with 0 length, no idea why
 				if alignment.record().seq_len() == 0 { continue }
-				// some have none, no idea why
-				
 				let qpos = match  alignment.qpos(){
 					Some(q) => q,
 					_ =>  continue,
