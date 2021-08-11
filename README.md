@@ -29,7 +29,6 @@ OPTIONS:
 ## Limitations
 
  - the bed-file currently accepts only single nucleotide positions, no ranges.
- - not tested for indels
  - systematic testing missing so far
 
 ## Output
@@ -37,18 +36,19 @@ OPTIONS:
 Example:
 
 ```
-##      abc:    0.2.0                                           
-##      author: Emanuel Schmid-Siegert                                          
-##      date:   Sun, 08 Aug 2021 08:47:45 +0200                                         
-##      command:        target/debug/abc --bam test/test_mpileup.bam --outfile test/test_mpileup.out.tsv --positions test/test_mpileup.bed --reference test/test_ref.fa                                         
-# chromosome    position        reference       A       T       C       G       ambigious       depth
-17      302     T       1       16      0       0       0       17
-17      303     G       0       0       0       17      0       17
-17      1869    A       11      7       0       0       0       18
-17      1870    C       0       0       18      0       0       18
-17      1884    G       0       0       0       21      0       21
-21      10402985        G       3       0       0       341     0       344
-21      10405200        T       0       29      30      0       0       59
+##      abc:    0.2.0                                                           
+##      author: Emanuel Schmid-Siegert                                                          
+##      date:   Wed, 11 Aug 2021 20:37:31 +0200                                                         
+##      command:        target/debug/abc --bam test/test_mpileup.bam --positions test/test_mpileup.bed --outfile test.tsv                                                               
+# chromosome    position        reference       A       T       C       G       ambigious       ins     del     depth
+17      302     NA      1       16      0       0       0       8       0       17
+17      303     NA      0       0       0       17      0       0       0       17
+17      1869    NA      11      7       0       0       0       0       0       18
+17      1870    NA      0       0       18      0       0       0       0       18
+17      1884    NA      0       0       0       21      0       0       0       21
+21      10402985        NA      3       0       0       341     0       20      0       344
+21      10405200        NA      0       29      30      0       0       0       0       59
+
 ```
 
 The header contains the version and author of the program as well as the execution time and the used command.
@@ -62,4 +62,6 @@ We have then in the table the following columns:
  - the count of Cs
  - the count of Gs
  - the count of ambigious based, e.g. N or X
+ - number of reads with an insertion
+ - number of reads with a deletion at that position
  - the depth at that position
