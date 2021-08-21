@@ -49,6 +49,8 @@ struct Pileup {
 	del: i32,
 	/// depth at that given position
 	depth: u32,
+	/// mutated or not
+	mutated: bool,
 }
 
 // takes the generates pileups in our specific
@@ -58,11 +60,11 @@ struct Pileup {
 fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , command: &str )-> Result<i32> {
 	let now: DateTime<Local> = Local::now();
 	let mut writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(&out)?;
-	writer.write_record(&["##","abc:",version,"","","","","","","",""])?;
-    writer.write_record(&["##","author:",author,"","","","","","","",""])?;
-    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","","","",""])?;
-    writer.write_record(&["##","command:", command,"","","","","","","",""])?;    
-    writer.write_record(&["# chromosome","position","reference","A","T","C","G","ambigious","ins","del","depth"])?;
+	writer.write_record(&["##","abc:",version,"","","","","","","","",""])?;
+    writer.write_record(&["##","author:",author,"","","","","","","","",""])?;
+    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","","","","",""])?;
+    writer.write_record(&["##","command:", command,"","","","","","","","",""])?;    
+    writer.write_record(&["# chromosome","position","reference","A","T","C","G","ambigious","ins","del","depth","mutated"])?;
     for element in result.iter() {
         writer.write_record(&[
 			element.chromosome.clone(),
@@ -75,7 +77,8 @@ fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , comman
 			element.ambigious.to_string(),
 			element.ins.to_string(),
 			element.del.to_string(),
-			element.depth.to_string()
+			element.depth.to_string(),
+			element.mutated.to_string()
 			])?;
     };
     writer.flush()?;
@@ -160,7 +163,7 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 				faidx.read(&mut ref_seq).expect("ERROR: could not read sequence from reference");
 				collection.reference = String::from(from_utf8(&ref_seq).unwrap())
 			}
-		None => collection.reference = String::from("NA")
+		None => {collection.reference = String::from("NA"); collection.mutated = false }
 	}
 	collection.chromosome = chr.to_string();
 	collection.position   = *pos;
@@ -171,8 +174,8 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 			for alignment in pile.alignments(){
 				// some have none, no idea why
 				match alignment.indel() {
-					bam::pileup::Indel::Ins(_len) => collection.ins += 1,
-    				bam::pileup::Indel::Del(_len) => collection.del += 1,
+					bam::pileup::Indel::Ins(_len) => {collection.ins += 1; continue } ,
+    				bam::pileup::Indel::Del(_len) => {collection.del += 1; continue },
     				bam::pileup::Indel::None => ()
 				}
 				// sometimes we get reads with 0 length, no idea why
@@ -193,8 +196,33 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 			}
 		}
 	};
+	if ref_file.is_some() {
+		match collection.reference.as_str() {
+				"A" => {
+					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_t != 0) {
+						collection.mutated = true
+					}
+				},
+				"T" => {
+					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) {
+						collection.mutated = true
+					}
+				},
+				"C" => {
+					if ( collection.nuc_t !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) {
+						collection.mutated = true
+					}
+				},
+				"G" => {
+					if ( collection.nuc_t !=0 ) || (collection.nuc_c != 0) || (collection.nuc_a != 0) {
+						collection.mutated = true
+					}
+				},
+				"N" => (),
+				_ => {panic!("ERROR: non compatible base found in reference sequence: {}!",collection.reference.as_str())},
+			}
+	}
 	collection
-
 }
 
 fn main() {
