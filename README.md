@@ -1,6 +1,6 @@
 # AgnosticBamCounter (abc)
 
-**this tool is very beta** !
+**this tool is very early access** !
 
 
 The goal was to have an agnostic examination of positions as I found e.g. PacBio HIFI read analysis
@@ -36,18 +36,18 @@ OPTIONS:
 Example:
 
 ```
-##      abc:    0.2.0                                                           
-##      author: Emanuel Schmid-Siegert                                                          
-##      date:   Wed, 11 Aug 2021 20:37:31 +0200                                                         
-##      command:        target/debug/abc --bam test/test_mpileup.bam --positions test/test_mpileup.bed --outfile test.tsv                                                               
-# chromosome    position        reference       A       T       C       G       ambigious       ins     del     depth
-17      302     NA      1       16      0       0       0       8       0       17
-17      303     NA      0       0       0       17      0       0       0       17
-17      1869    NA      11      7       0       0       0       0       0       18
-17      1870    NA      0       0       18      0       0       0       0       18
-17      1884    NA      0       0       0       21      0       0       0       21
-21      10402985        NA      3       0       0       341     0       20      0       344
-21      10405200        NA      0       29      30      0       0       0       0       59
+##      abc:    0.2.1                                                                   
+##      author: Emanuel Schmid-Siegert                                                                  
+##      date:   Sat, 21 Aug 2021 19:52:37 +0200                                                                 
+##      command:        target/debug/abc --bam test/test_mpileup.bam --positions test/test_mpileup.bed --outfile test.tsv --reference test/test_ref.fa                                                                  
+# chromosome    position        reference       A       T       C       G       ambigious       ins     del     depth   mutated
+17      302     T       1       8       0       0       0       8       0       17      true
+17      303     G       0       0       0       17      0       0       0       17      false
+17      1869    A       11      7       0       0       0       0       0       18      true
+17      1870    C       0       0       18      0       0       0       0       18      false
+17      1884    G       0       0       0       21      0       0       0       21      false
+21      10402985        G       3       0       0       321     0       20      0       344     true
+21      10405200        T       0       29      30      0       0       0       0       59      true
 
 ```
 
@@ -65,3 +65,4 @@ We have then in the table the following columns:
  - number of reads with an insertion
  - number of reads with a deletion at that position
  - the depth at that position
+ - information if mutated or not (true only possible with reference)
