@@ -199,22 +199,22 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 	if ref_file.is_some() {
 		match collection.reference.as_str() {
 				"A" => {
-					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_t != 0) {
+					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_t != 0) || (collection.del !=0) || (collection.ins !=0) {
 						collection.mutated = true
 					}
 				},
 				"T" => {
-					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) {
+					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
 						collection.mutated = true
 					}
 				},
 				"C" => {
-					if ( collection.nuc_t !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) {
+					if ( collection.nuc_t !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
 						collection.mutated = true
 					}
 				},
 				"G" => {
-					if ( collection.nuc_t !=0 ) || (collection.nuc_c != 0) || (collection.nuc_a != 0) {
+					if ( collection.nuc_t !=0 ) || (collection.nuc_c != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
 						collection.mutated = true
 					}
 				},
@@ -277,20 +277,20 @@ fn main() {
 		.get_matches();
     
 	// prepare input or quit
-	let bam_file  = matches.value_of("BAM").unwrap();
-	let bed_file  = matches.value_of("POSITIONS").unwrap();
-	let out_file  = matches.value_of("OUT").unwrap();
-	let ref_file  = matches.value_of("REF").unwrap_or("NONE");
+	let bam_file    = matches.value_of("BAM").unwrap();
+	let bed_file    = matches.value_of("POSITIONS").unwrap();
+	let out_file    = matches.value_of("OUT").unwrap();
+	let ref_file    = matches.value_of("REF").unwrap_or("NONE");
+	let bam_threads = matches.value_of("THREADS").unwrap_or("1").parse::<u32>().unwrap();
+
 	if matches.is_present("BAMBAM") {
 		bambam::bam_bam_inda_house();
 	}
-	let bam_threads   = matches.value_of("THREADS").unwrap_or("1").parse::<u32>().unwrap();
-	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(&bed_file);
-	
-	let analysis_result = analyze_bam_positions(&bam_file,&positions, &ref_file, &bam_threads);
+	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(bed_file);
+	let analysis_result = analyze_bam_positions(bam_file,&positions, ref_file, &bam_threads);
 	// here we box the error, so in case the writing does
 	// not work we get a return of the error from the process back
-	if let Err(err) = print_pileup(&analysis_result,&out_file,crate_version!(),crate_authors!(),&args_string){
+	if let Err(err) = print_pileup(&analysis_result,out_file,crate_version!(),crate_authors!(),&args_string){
 		eprintln!("{}", err);
         process::exit(1);
     }
