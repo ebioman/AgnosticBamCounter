@@ -191,6 +191,10 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 					"T" => collection.nuc_t += 1  ,
 					"C" => collection.nuc_c += 1  ,
 					"G" => collection.nuc_g += 1  ,
+					"a" => collection.nuc_a += 1  ,
+					"t" => collection.nuc_t += 1  ,
+					"c" => collection.nuc_c += 1  ,
+					"g" => collection.nuc_g += 1  ,
 					_ => collection.ambigious += 1  ,
 				}
 			}
@@ -214,6 +218,26 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 					}
 				},
 				"G" => {
+					if ( collection.nuc_t !=0 ) || (collection.nuc_c != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
+						collection.mutated = true
+					}
+				},
+				"a" => {
+					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_t != 0) || (collection.del !=0) || (collection.ins !=0) {
+						collection.mutated = true
+					}
+				},
+				"t" => {
+					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
+						collection.mutated = true
+					}
+				},
+				"c" => {
+					if ( collection.nuc_t !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
+						collection.mutated = true
+					}
+				},
+				"g" => {
 					if ( collection.nuc_t !=0 ) || (collection.nuc_c != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
 						collection.mutated = true
 					}
@@ -274,6 +298,19 @@ fn main() {
 			.takes_value(false)
 			.required(false)
 			.hidden(true))	
+		.arg(Arg::with_name("RAF")
+			.short("k")
+			.long("raf")
+			.takes_value(false)
+			.required(false)
+			.help("displays additional column with reference allele frequency"))
+		.arg(Arg::with_name("VAF")
+			.short("l")
+			.long("vaf")
+			.takes_value(false)
+			.required(false)
+			.help("displays additional column with variant allele frequency \
+				\nNote: in multiallelic sites returns sum of alternate frequencies"))
 		.get_matches();
     
 	// prepare input or quit
@@ -281,7 +318,7 @@ fn main() {
 	let bed_file    = matches.value_of("POSITIONS").unwrap();
 	let out_file    = matches.value_of("OUT").unwrap();
 	let ref_file    = matches.value_of("REF").unwrap_or("NONE");
-	let bam_threads = matches.value_of("THREADS").unwrap_or("1").parse::<u32>().unwrap();
+	let bam_threads  = matches.value_of("THREADS").unwrap_or("1").parse::<u32>().unwrap();
 
 	if matches.is_present("BAMBAM") {
 		bambam::bam_bam_inda_house();
