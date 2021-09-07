@@ -1,11 +1,14 @@
 [package]
 name    = "abc"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Emanuel Schmid-Siegert"]
 edition = "2018"
 description   =  """
 The Agnostic Bam Counter (abc) determines at a given positions the count of observed nucleotides.
 Simply supply a bed file with positions and obtains a tsv file with counts for each ATCG and reference if provided.
+If a reference file is provided it evaluates further the reference and variant allele frequency.
+This is though always a sum over all potentially multi-allelic site.
+
 Note: 
  - one needs to supply single nucleotide positions and not a range
  - it will sort both, by chromosome and then position - this might pose problems with funky contig names!

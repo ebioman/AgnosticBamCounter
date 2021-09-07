@@ -1,5 +1,4 @@
 use clap::{app_from_crate,crate_name,crate_description,crate_authors,crate_version,Arg};
-//use bio::io::{bed::Reader};
 use std::collections::HashMap;
 use std::path::Path;
 use rust_htslib::{bam, bam::Read};
@@ -51,6 +50,10 @@ struct Pileup {
 	depth: u32,
 	/// mutated or not
 	mutated: bool,
+	/// sum of variant frequency (sum/depth)
+	vaf: f32,
+	//// reference allele frequency (ref/depth)
+	raf: f32,
 }
 
 // takes the generates pileups in our specific
@@ -60,11 +63,11 @@ struct Pileup {
 fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , command: &str )-> Result<i32> {
 	let now: DateTime<Local> = Local::now();
 	let mut writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(&out)?;
-	writer.write_record(&["##","abc:",version,"","","","","","","","",""])?;
-    writer.write_record(&["##","author:",author,"","","","","","","","",""])?;
-    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","","","","",""])?;
-    writer.write_record(&["##","command:", command,"","","","","","","","",""])?;    
-    writer.write_record(&["# chromosome","position","reference","A","T","C","G","ambigious","ins","del","depth","mutated"])?;
+	writer.write_record(&["##","abc:",version,"","","","","","","","","",""])?;
+    writer.write_record(&["##","author:",author,"","","","","","","","","",""])?;
+    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","","","","","",""])?;
+    writer.write_record(&["##","command:", command,"","","","","","","","","",""])?;    
+    writer.write_record(&["# chromosome","position","reference","A","T","C","G","ambigious","ins","del","depth","VAF","RAF"])?;
     for element in result.iter() {
         writer.write_record(&[
 			element.chromosome.clone(),
@@ -78,7 +81,8 @@ fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , comman
 			element.ins.to_string(),
 			element.del.to_string(),
 			element.depth.to_string(),
-			element.mutated.to_string()
+			format!("{:.4}",element.vaf),
+			format!("{:.4}",element.raf),
 			])?;
     };
     writer.flush()?;
@@ -129,7 +133,7 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, re
 	// this is really not great, I want to open if available the
 	// index file and provide to the fetch postion but I cant manage
 	// to specify the type in the function definition
-	// therefore I open close very often.....
+	// therefore I open close very often.?....
 	for chr in positions.keys().sorted() {
 		for pos in positions.get(chr).unwrap().iter().sorted(){
 			let tmp_result = match ref_fasta { 
@@ -154,7 +158,7 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 	// given position
 	bam.fetch((chr,start,end)).expect("ERROR: could not fetch region");
 	// currently we ignore completely clipping
-	let mut collection : Pileup = Default::default();
+	let mut collection : Pileup = Pileup { vaf: 0_f32, raf: 1_f32, ..Default::default() };
 	match ref_file {
 		Some(x) => {
 				let mut faidx = IndexedReader::from_file(&x).unwrap();
@@ -186,67 +190,69 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 				};
 				let nuc  = &alignment.record().seq().as_bytes()[qpos..qpos+1];
 				let nuc1 = from_utf8(nuc).unwrap();
-				match nuc1 {
+				match nuc1.to_uppercase().as_str() {
 					"A" => collection.nuc_a += 1  ,
 					"T" => collection.nuc_t += 1  ,
 					"C" => collection.nuc_c += 1  ,
 					"G" => collection.nuc_g += 1  ,
-					"a" => collection.nuc_a += 1  ,
-					"t" => collection.nuc_t += 1  ,
-					"c" => collection.nuc_c += 1  ,
-					"g" => collection.nuc_g += 1  ,
 					_ => collection.ambigious += 1  ,
 				}
 			}
 		}
 	};
 	if ref_file.is_some() {
-		match collection.reference.as_str() {
-				"A" => {
-					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_t != 0) || (collection.del !=0) || (collection.ins !=0) {
-						collection.mutated = true
-					}
-				},
-				"T" => {
-					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
-						collection.mutated = true
-					}
-				},
-				"C" => {
-					if ( collection.nuc_t !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
-						collection.mutated = true
-					}
-				},
-				"G" => {
-					if ( collection.nuc_t !=0 ) || (collection.nuc_c != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
-						collection.mutated = true
-					}
-				},
-				"a" => {
-					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_t != 0) || (collection.del !=0) || (collection.ins !=0) {
-						collection.mutated = true
-					}
-				},
-				"t" => {
-					if ( collection.nuc_c !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
-						collection.mutated = true
-					}
-				},
-				"c" => {
-					if ( collection.nuc_t !=0 ) || (collection.nuc_g != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
-						collection.mutated = true
-					}
-				},
-				"g" => {
-					if ( collection.nuc_t !=0 ) || (collection.nuc_c != 0) || (collection.nuc_a != 0) || (collection.del !=0) || (collection.ins !=0){
-						collection.mutated = true
-					}
-				},
-				"N" => (),
-				_ => {panic!("ERROR: non compatible base found in reference sequence: {}!",collection.reference.as_str())},
-			}
+		eval_mutation(collection)
+	}else{
+		collection
 	}
-	collection
+}
+
+fn eval_mutation(mut obs:Pileup) -> Pileup{
+	match obs.reference.to_uppercase().as_str(){
+		"A" => {
+			if ( obs.nuc_c !=0 ) || (obs.nuc_g != 0) || (obs.nuc_t != 0) || (obs.del !=0) || (obs.ins !=0) {
+				let mutated = (obs.nuc_c + obs.nuc_g + obs.nuc_t  + obs.del + obs.ins) as f32;
+				let original = (obs.nuc_a) as f32;
+				let depth = (obs.depth) as f32;
+				obs.vaf = mutated/depth; 
+				obs.raf = original/depth;
+				obs.mutated = true;
+			}
+		},
+		"T" => {
+			if ( obs.nuc_c !=0 ) || (obs.nuc_g != 0) || (obs.nuc_a != 0) || (obs.del !=0) || (obs.ins !=0){
+				let mutated = (obs.nuc_c + obs.nuc_g + obs.nuc_a  + obs.del + obs.ins) as f32;
+				let original = (obs.nuc_t) as f32;
+				let depth = (obs.depth) as f32;
+				obs.vaf = mutated/depth; 
+				obs.raf = original/depth;
+				obs.mutated = true;
+			}
+		},
+		"C" => {
+			if ( obs.nuc_t !=0 ) || (obs.nuc_g != 0) || (obs.nuc_a != 0) || (obs.del !=0) || (obs.ins !=0){
+				let mutated = (obs.nuc_a + obs.nuc_g + obs.nuc_t  + obs.del + obs.ins) as f32;
+				let original = (obs.nuc_c) as f32;
+				let depth = (obs.depth) as f32;
+				obs.vaf = mutated/depth; 
+				obs.raf = original/depth;
+				obs.mutated = true;
+			}
+		},
+		"G" => {
+			if ( obs.nuc_t !=0 ) || (obs.nuc_c != 0) || (obs.nuc_a != 0) || (obs.del !=0) || (obs.ins !=0){
+				let mutated = (obs.nuc_c + obs.nuc_a + obs.nuc_t  + obs.del + obs.ins) as f32;
+				let original = (obs.nuc_g) as f32;
+				let depth = (obs.depth) as f32;
+				obs.vaf = mutated/depth; 
+				obs.raf = original/depth;
+				obs.mutated = true;
+			}
+		},
+		"N" => (),
+		_ => {panic!("ERROR: non compatible base found in reference sequence: {}!",obs.reference.as_str())},
+	}	
+	obs
 }
 
 fn main() {
@@ -298,19 +304,6 @@ fn main() {
 			.takes_value(false)
 			.required(false)
 			.hidden(true))	
-		.arg(Arg::with_name("RAF")
-			.short("k")
-			.long("raf")
-			.takes_value(false)
-			.required(false)
-			.help("displays additional column with reference allele frequency"))
-		.arg(Arg::with_name("VAF")
-			.short("l")
-			.long("vaf")
-			.takes_value(false)
-			.required(false)
-			.help("displays additional column with variant allele frequency \
-				\nNote: in multiallelic sites returns sum of alternate frequencies"))
 		.get_matches();
     
 	// prepare input or quit
@@ -327,7 +320,12 @@ fn main() {
 	let analysis_result = analyze_bam_positions(bam_file,&positions, ref_file, &bam_threads);
 	// here we box the error, so in case the writing does
 	// not work we get a return of the error from the process back
-	if let Err(err) = print_pileup(&analysis_result,out_file,crate_version!(),crate_authors!(),&args_string){
+	if let Err(err) = print_pileup(
+			&analysis_result,
+			out_file,
+			crate_version!(),
+			crate_authors!(),&args_string
+		){
 		eprintln!("{}", err);
         process::exit(1);
     }
