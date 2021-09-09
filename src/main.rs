@@ -162,7 +162,7 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 	match ref_file {
 		Some(x) => {
 				let mut faidx = IndexedReader::from_file(&x).unwrap();
-				faidx.fetch(chr,start,end).expect("ERROR: could not fetch interval on reference ");
+				faidx.fetch(chr,*pos,pos+1).expect("ERROR: could not fetch interval on reference ");
 				let mut ref_seq = Vec::new();
 				faidx.read(&mut ref_seq).expect("ERROR: could not read sequence from reference");
 				collection.reference = String::from(from_utf8(&ref_seq).unwrap())
