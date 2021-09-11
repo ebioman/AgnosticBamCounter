@@ -1,6 +1,6 @@
 [package]
 name    = "abc"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Emanuel Schmid-Siegert"]
 edition = "2018"
 description   =  """
@@ -12,6 +12,7 @@ This is though always a sum over all potentially multi-allelic site.
 Note: 
  - one needs to supply single nucleotide positions and not a range
  - it will sort both, by chromosome and then position - this might pose problems with funky contig names!
+ - it is similar to BED 0 based so a SAM position 1000 would translate to 999-1000
 """
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

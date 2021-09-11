@@ -25,8 +25,10 @@ type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 struct Pileup {
     /// chromosome
     chromosome: String,
-    /// position
-    position: u64,
+    /// start is 0 based similar to BED
+    start: u64,
+	/// end is 0 based
+	end: u64,
     /// the reference nuc if 
 	/// available through provided 
 	/// reference FASTA
@@ -63,15 +65,16 @@ struct Pileup {
 fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , command: &str )-> Result<i32> {
 	let now: DateTime<Local> = Local::now();
 	let mut writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(&out)?;
-	writer.write_record(&["##","abc:",version,"","","","","","","","","",""])?;
-    writer.write_record(&["##","author:",author,"","","","","","","","","",""])?;
-    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","","","","","",""])?;
-    writer.write_record(&["##","command:", command,"","","","","","","","","",""])?;    
-    writer.write_record(&["# chromosome","position","reference","A","T","C","G","ambigious","ins","del","depth","VAF","RAF"])?;
+	writer.write_record(&["##","abc:",version,"","","","","","","","","","",""])?;
+    writer.write_record(&["##","author:",author,"","","","","","","","","","",""])?;
+    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","","","","","","",""])?;
+    writer.write_record(&["##","command:", command,"","","","","","","","","","",""])?;    
+    writer.write_record(&["# chromosome","start","end","reference","A","T","C","G","ambigious","ins","del","depth","VAF","RAF"])?;
     for element in result.iter() {
         writer.write_record(&[
 			element.chromosome.clone(),
-			element.position.to_string(),
+			element.start.to_string(),
+			element.end.to_string(),
 			element.reference.clone(),
 			element.nuc_a.to_string(),
 			element.nuc_t.to_string(),
@@ -152,8 +155,8 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, re
 fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: Option<&str>) -> Pileup {
 	// NOTE:
 	// SAM is 1 based and not 0 based, need to correct for that in
-	let start = *pos -1 ;
-	let end   = *pos ;
+	let start = *pos ;
+	let end   = *pos +1 ;
 	// this obtains now the pileup at that
 	// given position
 	bam.fetch((chr,start,end)).expect("ERROR: could not fetch region");
@@ -170,7 +173,8 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 		None => {collection.reference = String::from("NA"); collection.mutated = false }
 	}
 	collection.chromosome = chr.to_string();
-	collection.position   = *pos;
+	collection.start   = start;
+	collection.end     = end;
 	for pile in bam.pileup().map(|x| x.expect("ERROR: could not parse BAM file")){
 		// now we only care about the position we inquire
 		if pile.pos() as u64 == start {
