@@ -36,18 +36,18 @@ OPTIONS:
 Example:
 
 ```
-##      abc:    0.2.1                                                                   
-##      author: Emanuel Schmid-Siegert                                                                  
-##      date:   Sat, 21 Aug 2021 19:52:37 +0200                                                                 
-##      command:        target/debug/abc --bam test/test_mpileup.bam --positions test/test_mpileup.bed --outfile test.tsv --reference test/test_ref.fa                                                                  
-# chromosome    position        reference       A       T       C       G       ambigious       ins     del     depth   mutated
-17      302     T       1       8       0       0       0       8       0       17      true
-17      303     G       0       0       0       17      0       0       0       17      false
-17      1869    A       11      7       0       0       0       0       0       18      true
-17      1870    C       0       0       18      0       0       0       0       18      false
-17      1884    G       0       0       0       21      0       0       0       21      false
-21      10402985        G       3       0       0       321     0       20      0       344     true
-21      10405200        T       0       29      30      0       0       0       0       59      true
+##	abc:	0.2.2											
+##	author:	Emanuel Schmid-Siegert											
+##	date:	Sat, 11 Sep 2021 07:35:03 +0200										
+##	command:	target/release/abc --bam test/test_mpileup.bam --positions test/test_mpileup.bed --outfile test/test_mpileup.out.tsv --reference test/test_ref.fa									
+# chromosome	start	end	reference	A	T	C	G	ambigious	ins	del	depthVAF	RAF
+17	301	302	T	1	8	0	0	0	8	0	17	0.5294	0.4706
+17	302	303	G	0	0	0	17	0	0	0	17	0.0000	1.0000
+17	827	828	T	0	2	11	0	0	0	0	13	0.8462	0.1538
+17	1868	1869	A	11	7	0	0	0	0	0	18	0.3889	0.6111
+17	2040	2041	G	13	0	0	10	0	0	0	23	0.5652	0.4348
+21	10402805	10402806	A	87	0	0	0	0	0	0	87	0.00001.0000
+21	10402975	10402976	C	2	2	333	0	0	0	0	337	0.01190.9881
 
 ```
 
@@ -55,7 +55,8 @@ The header contains the version and author of the program as well as the executi
 We have then in the table the following columns:
 
  - contig/chromosome name
- - the position 0 based
+ - the start (0 based)
+ - the end (0 based)
  - the reference nucleotide if reference was provided, otherwise "NA"
  - the count of As
  - the count of Ts
