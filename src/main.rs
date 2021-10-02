@@ -1,20 +1,11 @@
 use clap::{app_from_crate,crate_name,crate_description,crate_authors,crate_version,Arg};
+//use bio::io::{bed::Reader};
 use std::collections::HashMap;
 use std::path::Path;
 use rust_htslib::{bam, bam::Read};
 use std::str::from_utf8;
-use bio::io::fasta::IndexedReader;
-use chrono::{DateTime, Local};
-use std::error;
-use std::process;
-use std::env;
-use itertools::Itertools;
-extern crate bambam;
-
-
-// Change the alias to `Box<error::Error>`.
-type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
-
+use std::sync::{Mutex,Arc};
+use std::thread;
 
 
 
@@ -25,10 +16,8 @@ type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 struct Pileup {
     /// chromosome
     chromosome: String,
-    /// start is 0 based similar to BED
-    start: u64,
-	/// end is 0 based
-	end: u64,
+    /// position
+    position: u64,
     /// the reference nuc if 
 	/// available through provided 
 	/// reference FASTA
@@ -44,52 +33,8 @@ struct Pileup {
     /// number of observe ambigious
 	/// elements, e.g. N or X
     ambigious: i32,
-	/// number of reads with insertion
-	ins: i32,
-	/// number of reads with deletion
-	del: i32,
 	/// depth at that given position
 	depth: u32,
-	/// mutated or not
-	mutated: bool,
-	/// sum of variant frequency (sum/depth)
-	vaf: f32,
-	//// reference allele frequency (ref/depth)
-	raf: f32,
-}
-
-// takes the generates pileups in our specific
-// format and prints them according to our wishes
-// currently only tsv, might add more possibilities
-// in the future
-fn print_pileup(result:&[Pileup],out: &str, version: &str, author: &str , command: &str )-> Result<i32> {
-	let now: DateTime<Local> = Local::now();
-	let mut writer = csv::WriterBuilder::new().delimiter(b'\t').from_path(&out)?;
-	writer.write_record(&["##","abc:",version,"","","","","","","","","","",""])?;
-    writer.write_record(&["##","author:",author,"","","","","","","","","","",""])?;
-    writer.write_record(&["##","date:",&now.to_rfc2822(),"","","","","","","","","","",""])?;
-    writer.write_record(&["##","command:", command,"","","","","","","","","","",""])?;    
-    writer.write_record(&["# chromosome","start","end","reference","A","T","C","G","ambigious","ins","del","depth","VAF","RAF"])?;
-    for element in result.iter() {
-        writer.write_record(&[
-			element.chromosome.clone(),
-			element.start.to_string(),
-			element.end.to_string(),
-			element.reference.clone(),
-			element.nuc_a.to_string(),
-			element.nuc_t.to_string(),
-			element.nuc_c.to_string(),
-			element.nuc_g.to_string(),
-			element.ambigious.to_string(),
-			element.ins.to_string(),
-			element.del.to_string(),
-			element.depth.to_string(),
-			format!("{:.4}",element.vaf),
-			format!("{:.4}",element.raf),
-			])?;
-    };
-    writer.flush()?;
-    Ok(0)
 }
 
 
@@ -106,7 +51,7 @@ fn parse_bed_file (input: &str) -> HashMap<String,Vec<u64>>{
 	let mut bed = bio::io::bed::Reader::from_file(input).unwrap();
 	for entry in bed.records(){
 		let record = entry.expect("ERROR: wrong BED record");
-		if record.end()-record.start()>1 {
+		if &record.end()-&record.start()>1 {
 			panic!("ERROR: entry {:?} contained not a position but a range!",&record);
 		}
 		bed_result
@@ -120,151 +65,91 @@ fn parse_bed_file (input: &str) -> HashMap<String,Vec<u64>>{
 
 // This reads now the BAM file and uses the positions
 // to check for each position the observed number of nucleotides
-// It sorts as well again by chromosome and position to be safe
-fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, ref_fasta: &str, threads: &u32) -> Vec<Pileup>{
+fn analyze_bam_positions (input: &str , positions: & HashMap<String,Vec<u64>>) -> Vec<Pileup>{
 	assert!(
 		Path::new(input).exists(),
 		"ERROR: BAM file {} does not exist!",
 		input,
 	);
-	let mut overview : Vec<Pileup> = Vec::new();
 	let mut bam_file = bam::IndexedReader::from_path(input).unwrap();
-	// generate a thread pool for the multithreaded reading and writing of BAM files
-	eprintln!("INFO: Parsing BAM file with {} threads",threads);
-    let pool = rust_htslib::tpool::ThreadPool::new(*threads).unwrap();
-    bam_file.set_thread_pool(&pool).unwrap();
-	// this is really not great, I want to open if available the
-	// index file and provide to the fetch postion but I cant manage
-	// to specify the type in the function definition
-	// therefore I open close very often.?....
-	for chr in positions.keys().sorted() {
-		for pos in positions.get(chr).unwrap().iter().sorted(){
-			let tmp_result = match ref_fasta { 
-			"NONE" => fetch_position(&mut bam_file,chr,pos,None),
-			 _     => fetch_position(&mut bam_file,chr,pos,Some(ref_fasta)),
-			};
-			overview.push(tmp_result);
-		}
+	//bam_file.set_threads(n_threads: usize);
+	// so now we generate a shared bam which will passed to threads
+	let mut overview : Vec<Pileup> = Vec::new();
+	let shared_overview = Arc::new(Mutex::new(overview));
+	let mut test = vec![];
+
+	for (chr,collection) in positions {
+		// now we do a local clone of bam for each process
+		let local_overview = Arc::clone(&shared_overview);
+		let child = std::thread::spawn(move || {
+				let mut child_overview = local_overview.lock().unwrap();
+				for pos in collection {
+					let tmp_result = fetch_position( &mut bam_file,&chr,&pos);
+					child_overview.push(tmp_result);
+				};
+		});
+		test.push(child);
+
 	}
+
+	for elements in test {
+		elements.join().unwrap();
+	}
+	println!("Results : {:?}", *shared_overview.lock().unwrap());
 	overview
 }
 
 // this sub-function gets the iterator result from the positions
 // and return the result of pileup analysis at that given position
 // allows to potentially already parallelize over each position analyzed
-fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: Option<&str>) -> Pileup {
+fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64) -> Pileup {
 	// NOTE:
-	// SAM is 1 based and not 0 based, need to correct for that in
-	let start = *pos ;
-	let end   = *pos +1 ;
+	// Currently the biggest issue is the fact that we might have spliced alignment 
+	// and the alignment length is often much longer than the sequence length --> need
+	// to work on cigar to get positions ???
+	let start = *pos;
+	let end   = pos + 1;
 	// this obtains now the pileup at that
 	// given position
-	bam.fetch((chr,start,end)).expect("ERROR: could not fetch region");
+	match bam.fetch((chr,start,end)) {
+		Ok(_)  => eprintln!("Obtained region {} {} {}", &chr,&start,&end),
+		Err(_) => panic!("Could not fetch region {} {} {}", &chr,&start,&end)
+	};
 	// currently we ignore completely clipping
-	let mut collection : Pileup = Pileup { vaf: 0_f32, raf: 1_f32, ..Default::default() };
-	match ref_file {
-		Some(x) => {
-				let mut faidx = IndexedReader::from_file(&x).unwrap();
-				faidx.fetch(chr,*pos,pos+1).expect("ERROR: could not fetch interval on reference ");
-				let mut ref_seq = Vec::new();
-				faidx.read(&mut ref_seq).expect("ERROR: could not read sequence from reference");
-				collection.reference = String::from(from_utf8(&ref_seq).unwrap())
-			}
-		None => {collection.reference = String::from("NA"); collection.mutated = false }
-	}
+	let mut collection : Pileup = Default::default();
 	collection.chromosome = chr.to_string();
-	collection.start   = start;
-	collection.end     = end;
+	collection.position   = start;
 	for pile in bam.pileup().map(|x| x.expect("ERROR: could not parse BAM file")){
 		// now we only care about the position we inquire
 		if pile.pos() as u64 == start {
 			collection.depth = pile.depth();
 			for alignment in pile.alignments(){
-				// some have none, no idea why
-				match alignment.indel() {
-					bam::pileup::Indel::Ins(_len) => {collection.ins += 1; continue } ,
-    				bam::pileup::Indel::Del(_len) => {collection.del += 1; continue },
-    				bam::pileup::Indel::None => ()
-				}
 				// sometimes we get reads with 0 length, no idea why
 				if alignment.record().seq_len() == 0 { continue }
+				// some have none, no idea why
 				let qpos = match  alignment.qpos(){
 					Some(q) => q,
 					_ =>  continue,
 				};
 				let nuc  = &alignment.record().seq().as_bytes()[qpos..qpos+1];
 				let nuc1 = from_utf8(nuc).unwrap();
-				match nuc1.to_uppercase().as_str() {
-					"A" => collection.nuc_a += 1  ,
-					"T" => collection.nuc_t += 1  ,
-					"C" => collection.nuc_c += 1  ,
-					"G" => collection.nuc_g += 1  ,
-					_ => collection.ambigious += 1  ,
+				match nuc1 {
+					"A" => collection.nuc_a = collection.nuc_a +1  ,
+					"T" => collection.nuc_t = collection.nuc_t +1  ,
+					"C" => collection.nuc_c = collection.nuc_c +1  ,
+					"G" => collection.nuc_g = collection.nuc_g +1  ,
+					_ => collection.ambigious = collection.ambigious +1  ,
 				}
+				//println!("Checking pile at from contig {} position {} with depth {} qpos {} and base {:?}",
+				//	pile.tid(),pile.pos(),pile.depth(), qpos, nuc1);
 			}
 		}
 	};
-	if ref_file.is_some() {
-		eval_mutation(collection)
-	}else{
-		collection
-	}
-}
+	collection
 
-fn eval_mutation(mut obs:Pileup) -> Pileup{
-	match obs.reference.to_uppercase().as_str(){
-		"A" => {
-			if ( obs.nuc_c !=0 ) || (obs.nuc_g != 0) || (obs.nuc_t != 0) || (obs.del !=0) || (obs.ins !=0) {
-				let mutated = (obs.nuc_c + obs.nuc_g + obs.nuc_t  + obs.del + obs.ins) as f32;
-				let original = (obs.nuc_a) as f32;
-				let depth = (obs.depth) as f32;
-				obs.vaf = mutated/depth; 
-				obs.raf = original/depth;
-				obs.mutated = true;
-			}
-		},
-		"T" => {
-			if ( obs.nuc_c !=0 ) || (obs.nuc_g != 0) || (obs.nuc_a != 0) || (obs.del !=0) || (obs.ins !=0){
-				let mutated = (obs.nuc_c + obs.nuc_g + obs.nuc_a  + obs.del + obs.ins) as f32;
-				let original = (obs.nuc_t) as f32;
-				let depth = (obs.depth) as f32;
-				obs.vaf = mutated/depth; 
-				obs.raf = original/depth;
-				obs.mutated = true;
-			}
-		},
-		"C" => {
-			if ( obs.nuc_t !=0 ) || (obs.nuc_g != 0) || (obs.nuc_a != 0) || (obs.del !=0) || (obs.ins !=0){
-				let mutated = (obs.nuc_a + obs.nuc_g + obs.nuc_t  + obs.del + obs.ins) as f32;
-				let original = (obs.nuc_c) as f32;
-				let depth = (obs.depth) as f32;
-				obs.vaf = mutated/depth; 
-				obs.raf = original/depth;
-				obs.mutated = true;
-			}
-		},
-		"G" => {
-			if ( obs.nuc_t !=0 ) || (obs.nuc_c != 0) || (obs.nuc_a != 0) || (obs.del !=0) || (obs.ins !=0){
-				let mutated = (obs.nuc_c + obs.nuc_a + obs.nuc_t  + obs.del + obs.ins) as f32;
-				let original = (obs.nuc_g) as f32;
-				let depth = (obs.depth) as f32;
-				obs.vaf = mutated/depth; 
-				obs.raf = original/depth;
-				obs.mutated = true;
-			}
-		},
-		"N" => (),
-		_ => {panic!("ERROR: non compatible base found in reference sequence: {}!",obs.reference.as_str())},
-	}	
-	obs
 }
 
 fn main() {
-	// now the next is not really for any argument 
-    // parsing but simply to get the command which 
-    // was used to execute as I cant get this from clap
-    let args: Vec<String> = env::args().collect();
-    let args_string = args.join(" ");
     let matches = app_from_crate!()
 		.arg(Arg::with_name("BAM")
 			.short("b")
@@ -293,45 +178,17 @@ fn main() {
 			.value_name("FASTA")
 			.help("if reference in fasta format provided, reference nucleotide \
                  \nis provided for each positions, otherwise NA")
-			.takes_value(true)
-            .required(false))
-		.arg(Arg::with_name("THREADS")
-			.short("t")
-			.long("threads")
-			.value_name("INT")
-			.takes_value(true)
-			.required(false))
-		.arg(Arg::with_name("BAMBAM")
-			.short("x")
-			.long("bambam")
-			.value_name("IDH")
 			.takes_value(false)
-			.required(false)
-			.hidden(true))	
+            .required(false))
 		.get_matches();
     
 	// prepare input or quit
-	let bam_file    = matches.value_of("BAM").unwrap();
-	let bed_file    = matches.value_of("POSITIONS").unwrap();
-	let out_file    = matches.value_of("OUT").unwrap();
-	let ref_file    = matches.value_of("REF").unwrap_or("NONE");
-	let bam_threads  = matches.value_of("THREADS").unwrap_or("1").parse::<u32>().unwrap();
-
-	if matches.is_present("BAMBAM") {
-		bambam::bam_bam_inda_house();
-	}
-	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(bed_file);
-	let analysis_result = analyze_bam_positions(bam_file,&positions, ref_file, &bam_threads);
-	// here we box the error, so in case the writing does
-	// not work we get a return of the error from the process back
-	if let Err(err) = print_pileup(
-			&analysis_result,
-			out_file,
-			crate_version!(),
-			crate_authors!(),&args_string
-		){
-		eprintln!("{}", err);
-        process::exit(1);
-    }
+	let bam_input = matches.value_of("BAM").unwrap();
+	let bed_file  = matches.value_of("POSITIONS").unwrap();
+	let _out_file  = matches.value_of("OUT").unwrap();
+	let _ref_file  = matches.value_of("REF").unwrap_or("NONE");
 	
+	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(&bed_file);
+	let analysis_result = analyze_bam_positions(&bam_input,&positions);
+	dbg!(analysis_result);
 }
