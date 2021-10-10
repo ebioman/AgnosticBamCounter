@@ -115,6 +115,10 @@ fn parse_bed_file (input: &str) -> HashMap<String,Vec<u64>>{
 			.push(record.start());
 	
 	};
+	for (chromome, entries) in bed_result.iter_mut(){
+		entries.sort_unstable();
+		entries.dedup();
+	}
 	bed_result
 }
 
@@ -177,6 +181,7 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 	collection.end     = end;
 	for pile in bam.pileup().map(|x| x.expect("ERROR: could not parse BAM file")){
 		// now we only care about the position we inquire
+		//dbg!(&pile);
 		if pile.pos() as u64 == start {
 			collection.depth = pile.depth();
 			for alignment in pile.alignments(){
@@ -202,7 +207,11 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 					_ => collection.ambigious += 1  ,
 				}
 			}
+			break;
 		}
+		
+					
+
 	};
 	if ref_file.is_some() {
 		eval_mutation(collection)
