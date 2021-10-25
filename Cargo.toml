@@ -25,3 +25,7 @@ chrono = "*"
 bio = "*"
 itertools = "*"
 bambam = {git = "https://github.com/ebioman/bambam"}
+rayon = "*"
+crossbeam = "0.7.3"
+crossbeam-channel = "0.4.4"
+crossbeam-utils = "*"

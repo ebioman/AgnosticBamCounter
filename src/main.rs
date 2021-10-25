@@ -10,6 +10,13 @@ use std::process;
 use std::env;
 use itertools::Itertools;
 extern crate bambam;
+use rayon::prelude::*;
+use std::fs;
+use crossbeam::channel::{unbounded, Receiver};
+use crossbeam_utils::{thread};
+
+
+
 
 
 // Change the alias to `Box<error::Error>`.
@@ -131,47 +138,66 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, re
 		"ERROR: BAM file {} does not exist!",
 		input,
 	);
-	let mut overview : Vec<Pileup> = Vec::new();
-	let mut bam_file = bam::IndexedReader::from_path(input).unwrap();
-	// generate a thread pool for the multithreaded reading and writing of BAM files
-	eprintln!("INFO: Parsing BAM file with {} threads",threads);
-    let pool = rust_htslib::tpool::ThreadPool::new(*threads).unwrap();
-    bam_file.set_thread_pool(&pool).unwrap();
-	// this is really not great, I want to open if available the
-	// index file and provide to the fetch postion but I cant manage
-	// to specify the type in the function definition
-	// therefore I open close very often.?....
-	for chr in positions.keys().sorted() {
-		for pos in positions.get(chr).unwrap().iter().sorted(){
-			let tmp_result = match ref_fasta { 
-			"NONE" => fetch_position(&mut bam_file,chr,pos,None),
-			 _     => fetch_position(&mut bam_file,chr,pos,Some(ref_fasta)),
+	let input_local     = &input.to_owned();
+	let positions_local = positions.to_owned();
+	let cpus = 2;
+	let n_chrom =positions_local.len();
+	let chunk_len = (n_chrom/cpus) as usize + 1 ;
+	eprintln!("chromosomes: {} divided by threads {}", n_chrom, chunk_len);
+	let reference_local = ref_fasta.to_owned();
+	let mut summary : Vec<Pileup> = Vec::new();
+	//let (snd, rxv) = unbounded();
+	thread::scope( |s| {
+		for chr in positions_local.keys().sorted() {
+			for pos in positions_local.get(chr).unwrap().iter().sorted(){
+				let mut overview : Vec<Pileup> = Vec::new();
+				s.spawn(move |_| {
+					let mut bam_file = bam::IndexedReader::from_path(input_local).unwrap();
+					let tmp_result = fetch_position(&mut bam_file,&chr,&pos,None);
+					dbg!(tmp_result);
+				});
+				
+		/*
+			let tmp_result = match reference_local.as_str() { 
+				"NONE" => {
+							fetch_position(&mut bam_file,&thread_chr,&thread_positions,None)
+						}
+						,
+				_     => {
+							let faidx = IndexedReader::from_file(&thread_ref).unwrap();
+							fetch_position(&mut bam_file,&thread_chr,&thread_positions,Some(faidx))
+						}
 			};
-			overview.push(tmp_result);
+		*/
+			}
 		}
-	}
-	overview
+	
+	}).unwrap();
+	//let v: Vec <_> = rxv.iter().collect();
+	//dbg!(v);
+	summary
 }
 
 // this sub-function gets the iterator result from the positions
 // and return the result of pileup analysis at that given position
 // allows to potentially already parallelize over each position analyzed
-fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: Option<&str>) -> Pileup {
+fn fetch_position(bam: & mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: Option<IndexedReader<fs::File>>) -> Pileup {
 	// NOTE:
 	// SAM is 1 based and not 0 based, need to correct for that in
 	let start = *pos ;
 	let end   = *pos +1 ;
+	let mut with_ref = false;
 	// this obtains now the pileup at that
 	// given position
 	bam.fetch((chr,start,end)).expect("ERROR: could not fetch region");
 	// currently we ignore completely clipping
 	let mut collection : Pileup = Pileup { vaf: 0_f32, raf: 1_f32, ..Default::default() };
 	match ref_file {
-		Some(x) => {
-				let mut faidx = IndexedReader::from_file(&x).unwrap();
-				faidx.fetch(chr,*pos,pos+1).expect("ERROR: could not fetch interval on reference ");
+		Some(mut x) => {
+				with_ref = true;
+				x.fetch(chr,*pos,pos+1).expect("ERROR: could not fetch interval on reference ");
 				let mut ref_seq = Vec::new();
-				faidx.read(&mut ref_seq).expect("ERROR: could not read sequence from reference");
+				x.read(&mut ref_seq).expect("ERROR: could not read sequence from reference");
 				collection.reference = String::from(from_utf8(&ref_seq).unwrap())
 			}
 		None => {collection.reference = String::from("NA"); collection.mutated = false }
@@ -213,7 +239,7 @@ fn fetch_position(bam: &mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: O
 					
 
 	};
-	if ref_file.is_some() {
+	if with_ref {
 		eval_mutation(collection)
 	}else{
 		collection
@@ -330,6 +356,13 @@ fn main() {
 		bambam::bam_bam_inda_house();
 	}
 	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(bed_file);
+	// Keep two around for main thread and thread running the pool
+	let threads = 2;
+	let pool = rayon::ThreadPoolBuilder::new()
+		.num_threads(threads)
+		.build()
+		.unwrap();
+	dbg!(pool);
 	let analysis_result = analyze_bam_positions(bam_file,&positions, ref_file, &bam_threads);
 	// here we box the error, so in case the writing does
 	// not work we get a return of the error from the process back
