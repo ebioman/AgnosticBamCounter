@@ -10,9 +10,9 @@ use std::process;
 use std::env;
 use itertools::Itertools;
 extern crate bambam;
-use rayon::prelude::*;
+//use rayon::prelude::*;
 use std::fs;
-use crossbeam::channel::{unbounded, Receiver};
+use crossbeam::channel::{unbounded};
 use crossbeam_utils::{thread};
 
 
@@ -25,7 +25,7 @@ type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 
 
 
-#[derive(Debug,Default)]
+#[derive(Debug,Default,Clone)]
 /// structure which holds our
 /// counts of nucleotides for 
 /// any given genomic position
@@ -122,7 +122,7 @@ fn parse_bed_file (input: &str) -> HashMap<String,Vec<u64>>{
 			.push(record.start());
 	
 	};
-	for (chromome, entries) in bed_result.iter_mut(){
+	for (_, entries) in bed_result.iter_mut(){
 		entries.sort_unstable();
 		entries.dedup();
 	}
@@ -132,50 +132,59 @@ fn parse_bed_file (input: &str) -> HashMap<String,Vec<u64>>{
 // This reads now the BAM file and uses the positions
 // to check for each position the observed number of nucleotides
 // It sorts as well again by chromosome and position to be safe
-fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, ref_fasta: &str, threads: &u32) -> Vec<Pileup>{
+fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, ref_fasta: &str, threads: &usize) -> Vec<Pileup>{
 	assert!(
 		Path::new(input).exists(),
 		"ERROR: BAM file {} does not exist!",
 		input,
 	);
+	// for the threads we need to have to first clone everything
+	// otherwise the "scope" part cant share the common variables
 	let input_local     = &input.to_owned();
-	let positions_local = positions.to_owned();
-	let cpus = 2;
-	let n_chrom =positions_local.len();
-	let chunk_len = (n_chrom/cpus) as usize + 1 ;
-	eprintln!("chromosomes: {} divided by threads {}", n_chrom, chunk_len);
-	let reference_local = ref_fasta.to_owned();
-	let mut summary : Vec<Pileup> = Vec::new();
-	//let (snd, rxv) = unbounded();
-	thread::scope( |s| {
+	let positions_local = positions.clone();
+	// less ideal but we have thanks to clap a reference 
+	// but want to avoid double referencing, therefore the
+	// work-around here
+	let ref_local       = <&str>::clone(&ref_fasta);
+	//let cpus = 2;
+	//let n_chrom =positions_local.len();
+	//let chunk_len = (n_chrom as u32/threads) as usize + 1 ;
+	//eprintln!("INFO: Foundchromosomes: {} divided by threads {}", n_chrom, chunk_len);
+	//let reference_local = ref_fasta.to_owned();
+	let thread_results : Vec<Pileup> ;
+	let (snd, rxv) = unbounded();
+	// now we launch for each position a new
+	// pileup call and send the result to the receiver
+	thread::scope( |child| {
 		for chr in positions_local.keys().sorted() {
 			for pos in positions_local.get(chr).unwrap().iter().sorted(){
-				let mut overview : Vec<Pileup> = Vec::new();
-				s.spawn(move |_| {
+				// cloning the sender will still send everything into same receiver
+				let snd_local = snd.clone();
+				// now we define how many threads should be used
+				child.builder().stack_size(*threads);
+				child.spawn( move |_| {
 					let mut bam_file = bam::IndexedReader::from_path(input_local).unwrap();
-					let tmp_result = fetch_position(&mut bam_file,&chr,&pos,None);
-					dbg!(tmp_result);
-				});
-				
-		/*
-			let tmp_result = match reference_local.as_str() { 
-				"NONE" => {
-							fetch_position(&mut bam_file,&thread_chr,&thread_positions,None)
-						}
-						,
-				_     => {
-							let faidx = IndexedReader::from_file(&thread_ref).unwrap();
-							fetch_position(&mut bam_file,&thread_chr,&thread_positions,Some(faidx))
-						}
-			};
-		*/
+					let tmp_result = match ref_local { 
+						"NONE" => {
+									fetch_position(&mut bam_file,chr,pos,None)
+								}
+								,
+						_     => {
+									let faidx = IndexedReader::from_file(&ref_local).unwrap();
+									fetch_position(&mut bam_file,chr,pos,Some(faidx))
+								}
+					};
+					snd_local.send(tmp_result).expect("ERROR: thread could not communicate result!");
+				});	
 			}
 		}
 	
 	}).unwrap();
-	//let v: Vec <_> = rxv.iter().collect();
-	//dbg!(v);
-	summary
+	// we need to close afterwards 
+	// the original sender as it otherwise still waits
+	drop(snd);
+	thread_results = rxv.iter().collect();
+	thread_results
 }
 
 // this sub-function gets the iterator result from the positions
@@ -235,9 +244,6 @@ fn fetch_position(bam: & mut bam::IndexedReader, chr: &str, pos:&u64, ref_file: 
 			}
 			break;
 		}
-		
-					
-
 	};
 	if with_ref {
 		eval_mutation(collection)
@@ -350,19 +356,12 @@ fn main() {
 	let bed_file    = matches.value_of("POSITIONS").unwrap();
 	let out_file    = matches.value_of("OUT").unwrap();
 	let ref_file    = matches.value_of("REF").unwrap_or("NONE");
-	let bam_threads  = matches.value_of("THREADS").unwrap_or("1").parse::<u32>().unwrap();
+	let bam_threads = matches.value_of("THREADS").unwrap_or("1").parse::<usize>().unwrap();
 
 	if matches.is_present("BAMBAM") {
 		bambam::bam_bam_inda_house();
 	}
 	let positions : HashMap<String,Vec<u64>> = 	parse_bed_file(bed_file);
-	// Keep two around for main thread and thread running the pool
-	let threads = 2;
-	let pool = rayon::ThreadPoolBuilder::new()
-		.num_threads(threads)
-		.build()
-		.unwrap();
-	dbg!(pool);
 	let analysis_result = analyze_bam_positions(bam_file,&positions, ref_file, &bam_threads);
 	// here we box the error, so in case the writing does
 	// not work we get a return of the error from the process back
