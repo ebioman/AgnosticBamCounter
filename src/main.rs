@@ -163,7 +163,7 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, re
 				let snd_local = snd.clone();
 				// now we define how many threads should be used
 				child.spawn( move |_| {
-					eprintln!("Current thread index: {:?}",rayon::current_thread_index());
+					//eprintln!("Current thread index: {:?}",rayon::current_thread_index());
 					let mut bam_file = bam::IndexedReader::from_path(input_local).unwrap();
 					let tmp_result = match ref_local { 
 						"NONE" => {
