@@ -10,10 +10,9 @@ use std::process;
 use std::env;
 use itertools::Itertools;
 extern crate bambam;
-//use rayon::prelude::*;
 use std::fs;
 use crossbeam::channel::{unbounded};
-use crossbeam_utils::{thread};
+use rayon;
 
 
 
@@ -153,16 +152,18 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, re
 	//let reference_local = ref_fasta.to_owned();
 	let thread_results : Vec<Pileup> ;
 	let (snd, rxv) = unbounded();
+	rayon::ThreadPoolBuilder::new().num_threads(*threads).build_global().unwrap();
+	eprintln!("Current thread-pool number: {:?}",rayon::current_num_threads());
 	// now we launch for each position a new
 	// pileup call and send the result to the receiver
-	thread::scope( |child| {
+	rayon::scope( |child| {
 		for chr in positions_local.keys().sorted() {
 			for pos in positions_local.get(chr).unwrap().iter().sorted(){
 				// cloning the sender will still send everything into same receiver
 				let snd_local = snd.clone();
 				// now we define how many threads should be used
-				child.builder().stack_size(*threads);
 				child.spawn( move |_| {
+					eprintln!("Current thread index: {:?}",rayon::current_thread_index());
 					let mut bam_file = bam::IndexedReader::from_path(input_local).unwrap();
 					let tmp_result = match ref_local { 
 						"NONE" => {
@@ -179,7 +180,7 @@ fn analyze_bam_positions (input: &str , positions: &HashMap<String,Vec<u64>>, re
 			}
 		}
 	
-	}).unwrap();
+	});
 	// we need to close afterwards 
 	// the original sender as it otherwise still waits
 	drop(snd);

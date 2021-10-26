@@ -1,6 +1,6 @@
 [package]
 name    = "abc"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Emanuel Schmid-Siegert"]
 edition = "2018"
 description   =  """
@@ -28,5 +28,4 @@ itertools = "*"
 bambam = {git = "https://github.com/ebioman/bambam"}
 crossbeam = "*"
 crossbeam-channel = "*"
-crossbeam-utils = "*"
-num_cpus = "*"
+rayon = "*"
