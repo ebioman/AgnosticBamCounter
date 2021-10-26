@@ -341,6 +341,8 @@ fn main() {
 			.short("t")
 			.long("threads")
 			.value_name("INT")
+			.help("number of threads used in thread-pool for querying positions ")
+			.default_value("1")
 			.takes_value(true)
 			.required(false))
 		.arg(Arg::with_name("BAMBAM")
@@ -357,7 +359,7 @@ fn main() {
 	let bed_file    = matches.value_of("POSITIONS").unwrap();
 	let out_file    = matches.value_of("OUT").unwrap();
 	let ref_file    = matches.value_of("REF").unwrap_or("NONE");
-	let bam_threads = matches.value_of("THREADS").unwrap_or("1").parse::<usize>().unwrap();
+	let bam_threads = matches.value_of("THREADS").unwrap().parse::<usize>().unwrap();
 
 	if matches.is_present("BAMBAM") {
 		bambam::bam_bam_inda_house();

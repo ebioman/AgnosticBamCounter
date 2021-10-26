@@ -11,19 +11,34 @@ The Agnostic Bam Counter (abc) determines at a given positions the count of obse
 Simply supply a bed file with positions and obtains a tsv file with counts for each ATCG and reference if provided
 
 ```
+abc 0.3.1
+Emanuel Schmid-Siegert
+The Agnostic Bam Counter (abc) determines at a given positions the count of observed nucleotides.
+Simply supply a bed file with positions and obtains a tsv file with counts for each ATCG and reference if provided.
+If a reference file is provided it evaluates further the reference and variant allele frequency.
+This is though always a sum over all potentially multi-allelic site.
+
+Note: 
+ - one needs to supply single nucleotide positions and not a range
+ - it will sort both, by chromosome and then position - this might pose problems with funky contig names!
+ - it is similar to BED 0 based so a SAM position 1000 would translate to 999-1000
+
+
 USAGE:
-    abc [FLAGS] --bam <BAM> --outfile <TSV> --positions <BED>
+    abc [OPTIONS] --bam <BAM> --outfile <TSV> --positions <BED>
 
 FLAGS:
-    -r, --reference    if reference in fasta format provided, reference nucleotide 
-                       is provided for each positions, otherwise NA
-    -h, --help         Prints help information
-    -V, --version      Prints version information
+    -h, --help       Prints help information
+    -V, --version    Prints version information
 
 OPTIONS:
-    -b, --bam <BAM>          aligned short or long reads
-    -o, --outfile <TSV>      the output file which will be in tsv format
-    -p, --positions <BED>    A bed file with positions
+    -b, --bam <BAM>            aligned short or long reads
+    -o, --outfile <TSV>        the output file which will be in tsv format
+    -p, --positions <BED>      A bed file with positions
+    -r, --reference <FASTA>    if reference in fasta format provided, reference nucleotide 
+                               is provided for each positions, otherwise NA
+    -t, --threads <INT>        number of threads used in thread-pool for querying positions  [default: 1]
+
 ```
 
 ## Limitations
