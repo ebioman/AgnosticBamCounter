@@ -1,7 +1,5 @@
 # AgnosticBamCounter (abc)
 
-**this tool is very early access** !
-
 
 The goal was to have an agnostic examination of positions as I found e.g. PacBio HIFI read analysis
 of `bamtools mpileup` to be sometimes questionable.
