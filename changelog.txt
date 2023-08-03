@@ -1,4 +1,6 @@
 # v0.3.2
+- hotfix as del was not correctly counted for depth
+# v0.3.2
 - separate functions into lib
 - simplify analysis of RAF&VAF
 - calculate VAF based on dominant mutation only

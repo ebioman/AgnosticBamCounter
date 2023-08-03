@@ -9,7 +9,7 @@ use itertools::Itertools;
 extern crate bambam;
 use std::fs;
 use crossbeam::channel::{unbounded};
-
+use log::debug;
 
 
 
@@ -238,12 +238,19 @@ fn fetch_position(
 		if pile.pos() as u64 == start {
 			collection.depth = pile.depth();
 			for alignment in pile.alignments(){
-				// some have none, no idea why
-				match alignment.indel() {
-					bam::pileup::Indel::Ins(_len) => {collection.ins += 1; continue } ,
-    				bam::pileup::Indel::Del(_len) => {collection.del += 1; continue },
-    				bam::pileup::Indel::None => ()
+				// some have none, no idea why.
+				// additionally the is Del from indel is not working as anticipated
+				// the is_del works instead though...
+				if alignment.is_del() {
+					collection.del += 1;
+				}else{
+					match alignment.indel() {
+						bam::pileup::Indel::Ins(_len) => {collection.ins += 1; continue } ,
+						bam::pileup::Indel::Del(_len) => {collection.del += 1; continue },
+						bam::pileup::Indel::None => ()
+					}
 				}
+				
 				// sometimes we get reads with 0 length, no idea why
 				if alignment.record().seq_len() == 0 { continue }
 				let qpos = match  alignment.qpos(){
@@ -288,6 +295,7 @@ fn fetch_position(
 fn eval_mutation(
 	mut obs:Pileup
 ) -> Pileup{
+	debug!("{:?}",obs);
 	let mut dominant_list : HashMap<&str,u32> =
 	[
 		 ("A", obs.nuc_a), 
@@ -303,6 +311,7 @@ fn eval_mutation(
 		.collect();
 	// check that the depth equals sum of observations
 	if obs.nuc_a + obs.nuc_t + obs.nuc_c + obs.nuc_g + obs.ambigious + obs.ins + obs.del != obs.depth {
+		debug!("A {} T {} C{} G {} N {} INS{} DEL {} Depth {}",obs.nuc_a,obs.nuc_t,obs.nuc_c,obs.nuc_g,obs.ambigious,obs.ins,obs.del,obs.depth );
 		panic!("ERROR: the sum of observations does not equal depth !");
 	}
 	match obs.reference.to_uppercase().as_str(){

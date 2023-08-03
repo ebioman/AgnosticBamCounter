@@ -1,6 +1,6 @@
 [package]
 name    = "abc"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Emanuel Schmid-Siegert"]
 edition = "2018"
 description   =  """
@@ -20,6 +20,8 @@ Note:
 [dependencies]
 rust-htslib = { version = "*", default-features = false }
 #regex = "1"
+log = "0.4"
+env_logger = "0.9.3"
 clap = "*"
 csv = "*"
 chrono = "*"

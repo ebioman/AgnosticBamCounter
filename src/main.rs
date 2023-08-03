@@ -8,6 +8,8 @@ use crate::libs::{print_pileup,parse_bed_file,analyze_bam_positions };
 mod libs;
 
 fn main() {
+	env_logger::init();
+
 	// now the next is not really for any argument 
     // parsing but simply to get the command which 
     // was used to execute as I cant get this from clap
