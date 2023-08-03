@@ -1,4 +1,4 @@
-# v0.3.2
+# v0.3.3
 - hotfix as del was not correctly counted for depth
 # v0.3.2
 - separate functions into lib
