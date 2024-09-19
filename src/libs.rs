@@ -118,8 +118,16 @@ pub fn parse_bed_file (
 	let mut bed = bio::io::bed::Reader::from_file(input).unwrap();
 	for entry in bed.records(){
 		let record = entry.expect("ERROR: wrong BED record");
+        // dirty hack, if that happens we create for each position a single entry
+        // we should still warn though that this is currently not recommended
 		if record.end()-record.start()>1 {
-			panic!("ERROR: entry {:?} contained not a position but a range!",&record);
+			eprintln!("WARNING: entry {:?} contained not a position but a range! This will cost you.....",&record);
+            for pos in record.start()..record.end() {
+                bed_result
+                .entry(record.chrom().to_string())
+                .or_insert_with(Vec::new)
+                .push(pos);        
+            }
 		}
 		bed_result
 			.entry(record.chrom().to_string())
