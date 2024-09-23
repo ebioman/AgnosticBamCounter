@@ -1,6 +1,6 @@
 [package]
 name    = "abc"
-version = "0.3.1"
+version = "0.3.3"
 authors = ["Emanuel Schmid-Siegert"]
 description   =  """
 The Agnostic Bam Counter (abc) determines at a given positions the count of observed nucleotides.

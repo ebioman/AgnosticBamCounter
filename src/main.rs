@@ -1,13 +1,6 @@
 use std::collections::HashMap;
-use std::path::Path;
-use rust_htslib::{bam, bam::Read};
-use std::str::from_utf8;
-use bio::io::fasta::IndexedReader;
-use chrono::{DateTime, Local};
-use std::error;
 use std::process;
 use std::env;
-use itertools::Itertools;
 extern crate bambam;
 use std::fs;
 use crossbeam::channel::{unbounded};
@@ -339,6 +332,8 @@ fn eval_mutation(
 }
 
 fn main() {
+	env_logger::init();
+
 	// now the next is not really for any argument 
     // parsing but simply to get the command which 
     // was used to execute as I cant get this from clap
